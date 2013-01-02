@@ -7,7 +7,6 @@ function love.load()
   files = love.filesystem.enumerate( dir )
   images = {}
   image_locations = {}
-  -- image_attached = {}
   defaultimage = love.graphics.newImage('defaultimage.png')
 
   for k, file in ipairs(files) do
@@ -37,7 +36,7 @@ function love.load()
   anim = { 
     default = { 
 		  r=1, loop=true, advanced=false,
-		  { a=0, {a=0},{a=-math.pi/2},{a=math.pi/2}  },
+		  { a=0, {a=math.pi},{a=-math.pi/2},{a=math.pi/2}  },
     }
   }
 
@@ -62,11 +61,15 @@ end
 
 
 function love.keypressed(k)
-	if k=="escape" then love.event.push("q")
+	if k=="escape" then 
+    love.event.push("q")
 	elseif k=="t" then 
     animation_test_mode = not animation_test_mode
+	elseif k=="r" then 
+    rotate_mode = not rotate_mode
 	else 
     animation_test_mode = false
+    rotate_mode = false
   end
   --[[
 	elseif k=="r" then love.filesystem.load("main.lua")() love.load()
@@ -96,9 +99,13 @@ function love.mousepressed(x, y, button)
         else
           -- print("there is a active image, set it to nil!")
           active_image = nil
+          move_mode = false
+          marker_move_mode_position = nil
         end
       elseif active_marker  then
         active_marker = false
+        move_mode = false
+        marker_move_mode_position = nil
       else -- no active image or marker
         if hover_marker then
           -- print("there is a hover image, set it to active!")
@@ -116,6 +123,7 @@ function love.mousepressed(x, y, button)
       move_mode = not move_mode
       if move_mode and active_marker then
         -- remember mouse position
+        original_pos = { bone_markers_simple[active_marker]['body']['ox'], bone_markers_simple[active_marker]['body']['oy'] }
         marker_move_mode_position = { love.mouse.getX(), love.mouse.getY() }
       end
     end
@@ -158,17 +166,20 @@ function love.update()
       image_locations[active_image] = {mousex, mousey}
     end
 
-    if move_mode and active_marker then
+    if move_mode and active_marker and marker_move_mode_position then
       -- remember mouse position
       loc = { love.mouse.getX(), love.mouse.getY() }
       x = marker_move_mode_position[1] - loc[1]
       y = marker_move_mode_position[2] - loc[2]
       -- TODO!!! adjust for no-brain-fuck-editing :D
-      --x = (x*math.cos(bone_markers_simple[active_marker]['angle'])) -- + (y*math.sin(bone_markers_simple[active_marker]['angle']))
-      --y = (y*math.cos(bone_markers_simple[active_marker]['angle'])) -- + (x*math.sin(bone_markers_simple[active_marker]['angle']))
 
-      bone_markers_simple[active_marker]['body']['ox'] = x
-      bone_markers_simple[active_marker]['body']['oy'] = y
+      -- translate values into bones orientation
+      trans_x = 1*(x*math.cos(bone_markers_simple[active_marker]['angle'])) + 1*(y*math.sin(bone_markers_simple[active_marker]['angle']+0*math.pi/2))
+      trans_y = 1*(y*math.cos(bone_markers_simple[active_marker]['angle'])) + 1*(x*math.sin(bone_markers_simple[active_marker]['angle']+2*math.pi/2))
+      -- print ( x .. " " .. y .. " => " .. trans_x .. " " .. trans_y)
+
+      bone_markers_simple[active_marker]['body']['ox'] = original_pos[1] + trans_x
+      bone_markers_simple[active_marker]['body']['oy'] = original_pos[2] + trans_y
     end
 
     --[[
@@ -224,12 +235,19 @@ function love.draw()
   end
 
   -- ----------------------      markers      ---------------------------
-  love.graphics.setColor(255, 0, 0, 255)
-  -- mark active_image
-  if active_image then
-    loc = image_locations[active_image]
-    width = images[active_image]:getWidth()
-    love.graphics.line(loc[1],loc[2], loc[1] + width, loc[2])
+  -- mark inactive & active_image
+  if not animation_test_mode then
+    for k, loc in ipairs(image_locations) do
+      if k == active_image then
+        love.graphics.setColor(255, 0, 0, 255)
+        width = images[k]:getWidth()
+        love.graphics.line(loc[1],loc[2], loc[1] + width, loc[2])
+      else
+        love.graphics.setColor(0, 0, 255, 255)
+        width = images[k]:getWidth()
+        love.graphics.line(loc[1],loc[2], loc[1] + width, loc[2])
+      end
+    end
   end
 
   love.graphics.setColor(0, 0, 0, 255)
