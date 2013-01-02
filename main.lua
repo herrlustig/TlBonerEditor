@@ -24,6 +24,8 @@ function love.load()
   hover_marker = nil
   active_marker = nil
   move_mode = false
+  rotate_mode = false
+  resize_mode = false
   animation_test_mode = false
 
   bone_markers = nil
@@ -66,10 +68,24 @@ function love.keypressed(k)
 	elseif k=="t" then 
     animation_test_mode = not animation_test_mode
 	elseif k=="r" then 
-    rotate_mode = not rotate_mode
+    if active_marker then 
+      print("enter rotate mode")
+      rotate_mode = not rotate_mode
+      orig_angle = bone_markers_simple[active_marker]['body']['oa'] or 0
+      marker_move_mode_position = { love.mouse.getX(), love.mouse.getY() } -- TODO: rename
+    end
+	elseif k=="s" then 
+    if active_marker then 
+      print("enter resize mode")
+      resize_mode = not resize_mode
+      orig_scale = {bone_markers_simple[active_marker]['body']['sx'] or 1, bone_markers_simple[active_marker]['body']['sy'] or 1}
+      marker_move_mode_position = { love.mouse.getX(), love.mouse.getY() } -- TODO: rename
+    end
 	else 
     animation_test_mode = false
     rotate_mode = false
+    resize_mode = false
+    orig_angle = nil
   end
   --[[
 	elseif k=="r" then love.filesystem.load("main.lua")() love.load()
@@ -105,6 +121,7 @@ function love.mousepressed(x, y, button)
       elseif active_marker  then
         active_marker = false
         move_mode = false
+        rotate_mode = false
         marker_move_mode_position = nil
       else -- no active image or marker
         if hover_marker then
@@ -166,12 +183,28 @@ function love.update()
       image_locations[active_image] = {mousex, mousey}
     end
 
-    if move_mode and active_marker and marker_move_mode_position then
-      -- remember mouse position
+    if active_marker and rotate_mode and orig_angle and marker_move_mode_position then
+      loc = { love.mouse.getX(), love.mouse.getY() }
+      x = marker_move_mode_position[1] - loc[1]
+      new_angle = (orig_angle + (x/100) )%(2*math.pi)
+--      print ( "new angle is: " .. new_angle )
+      bone_markers_simple[active_marker]['body']['oa'] = new_angle
+    elseif resize_mode and active_marker and marker_move_mode_position and orig_scale then
+      loc = { love.mouse.getX(), love.mouse.getY() }
+      x = ( marker_move_mode_position[1] - loc[1] ) / 100
+      y = ( marker_move_mode_position[2] - loc[2] ) / 100
+
+      -- translate values into bones orientation
+      trans_x = 1*(x*math.cos(bone_markers_simple[active_marker]['angle'])) + 1*(y*math.sin(bone_markers_simple[active_marker]['angle']+0*math.pi/2))
+      trans_y = 1*(y*math.cos(bone_markers_simple[active_marker]['angle'])) + 1*(x*math.sin(bone_markers_simple[active_marker]['angle']+2*math.pi/2))
+      -- print ( x .. " " .. y .. " => " .. trans_x .. " " .. trans_y)
+
+      bone_markers_simple[active_marker]['body']['sx'] = orig_scale[1] - trans_x
+      bone_markers_simple[active_marker]['body']['sy'] = orig_scale[2] - trans_y
+    elseif move_mode and active_marker and marker_move_mode_position then
       loc = { love.mouse.getX(), love.mouse.getY() }
       x = marker_move_mode_position[1] - loc[1]
       y = marker_move_mode_position[2] - loc[2]
-      -- TODO!!! adjust for no-brain-fuck-editing :D
 
       -- translate values into bones orientation
       trans_x = 1*(x*math.cos(bone_markers_simple[active_marker]['angle'])) + 1*(y*math.sin(bone_markers_simple[active_marker]['angle']+0*math.pi/2))
@@ -216,7 +249,7 @@ function love.draw()
     for k, v in ipairs(bone_markers_simple) do
       if v['image'] then
         -- print("print here: " .. loc[1] .. loc[2])
-        love.graphics.draw(v['image'], v['bottom'][1], v['bottom'][2], v['angle'], v['body']['sx'],v['body']['sy'], v['body']['ox'],v['body']['oy'])
+        love.graphics.draw(v['image'], v['bottom'][1], v['bottom'][2], v['angle'] + (v['body']['oa'] or 0 ), v['body']['sx'],v['body']['sy'], v['body']['ox'],v['body']['oy'])
       end
     end
   else
