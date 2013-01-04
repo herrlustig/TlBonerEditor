@@ -9,14 +9,14 @@ function love.load()
   require "TLboner"
   -- load pictures of dir given via argument
   -- TODO: userinput
-  dir = 'testmaterial/'
-  files = love.filesystem.enumerate( dir )
+  filedir = 'testmaterial/'
+  files = love.filesystem.enumerate( filedir )
   images = {}
   image_locations = {}
   defaultimage = love.graphics.newImage('defaultimage.png')
 
   for k, file in ipairs(files) do
-    filename = dir .. file
+    filename = filedir .. file
     print("Filename " .. filename)
     -- TODO: add expection handling here. if it fails then remove file from files table
     table.insert(images, love.graphics.newImage(filename))
@@ -33,6 +33,7 @@ function love.load()
   rotate_mode = false
   resize_mode = false
   animation_test_mode = false
+  active_animation = 1
 
   bone_markers = nil
   bone_markers_simple = nil
@@ -65,7 +66,7 @@ function love.load()
     -- TODO: add other basic bones
   }
 
-  bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], anim.default[1].a, true)
+  bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
   print(dumpTable(bone_markers))
   --[[
   print("\n\n")
@@ -99,7 +100,7 @@ function love.keypressed(k)
       table.insert(bone_markers_simple[active_marker]['anim'], {a=0})
       -- recreate bone_markers 
       -- TODO: minor bug of createBoneMarkers! parent_angle must be set to nil here
-      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], nil, true)
+      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], nil, true)
     elseif k=="m" then 
       modify_mode = not modify_mode
       local bottom = bone_markers_simple[active_marker]['bottom'] 
@@ -109,10 +110,10 @@ function love.keypressed(k)
         bone_markers_simple[active_marker]['anim']['a'] = new_angle
         print ( "new angle")
         print (new_angle)
-        print ( anim.default[1].a )
+        print ( anim.default[active_animation].a )
         -- recreate bone_markers -- TODO: update subbones's 'bottom' and 'top' and 'angle' attributes (used for drawing)
         -- TODO: minor 'bug' in createBoneMarkers, for root the parent angle has to be set to 0
-        bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], 0, true)
+        bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
         new_angle = nil
       elseif modify_mode then
         print("modify bone")
@@ -126,9 +127,47 @@ function love.keypressed(k)
     orig_angle = nil
   end
 
+  if k=="up" then 
+    print("up ! ")
+    active_animation = active_animation - 1
+    if active_animation < 1 then active_animation = #anim.default end
+    bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
+  elseif k=="down" then 
+    print("down ! ")
+    active_animation = active_animation + 1
+    if active_animation > #anim.default then active_animation = 1 end
+    bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
+  elseif k=="c" then
+    -- copy current active animation 
+    -- insert it as last animation -- TODO: insert after active animation
+    local new_anim = deepcopy(anim.default[active_animation])
+    table.insert(anim.default, new_anim)
+    -- TODO: maybe switch to it again
+  end
   if k=="b" then 
       print("recreate bone_markers " )
-      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], anim.default[1].a, true)
+      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
+  end
+  if k=="d" then 
+      print("dump to file" )
+      local file = io.open("animation.lua", "w")
+      file:write("image_files = " .. dumpAnimData(files) .. "\n\n\n")
+      file:write("filedir = '" .. filedir .. "'" .. "\n\n\n")
+      file:write("images = { }\n".."for k, file in ipairs(files) do\n  filename = filedir .. file\n  table.insert(images, love.graphics.newImage(filename))\nend\n\n\n")
+      file:write("defaultimage = love.graphics.newImage('defaultimage.png')" .. "\n\n\n")
+      file:write("anim = " .. dumpAnimData(anim) .. "\n\n\n" .. "body = " .. dumpAnimData(body))
+      file:close()
+  end
+  if k=="l" then 
+    print("load animation from animation.lua")
+    dofile("animation.lua")
+    image_locations = {}
+
+    for k, v in ipairs(images) do
+      x, y = math.random(0, love.graphics.getWidth()-100), math.random(0, love.graphics.getHeight() - 100) -- TODO: replace with window resolution values
+      table.insert(image_locations, {x, y } )
+    end
+    bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[active_animation], 0, true)
   end
   --[[
 	elseif k=="r" then love.filesystem.load("main.lua")() love.load()
@@ -312,13 +351,15 @@ function love.draw()
 
   -- ----------------------      bones      ---------------------------
   love.graphics.setColor(0, 0, 0, 255)
-  -- TODO: enable other anims, other frames
+
   drawBones(bone_markers, true) 
   if active_marker then
     act_b = bone_markers_simple[active_marker]
     love.graphics.setColor(255, 170, 0, 255)
     local bmark_len = bmark_len + 2
     love.graphics.rectangle('fill', act_b.top[1]-(bmark_len/2), act_b.top[2]-(bmark_len/2), bmark_len, bmark_len)
+    love.graphics.setColor(50, 205, 50, 255)
+    love.graphics.rectangle('fill', act_b.bottom[1]-(bmark_len/2), act_b.bottom[2]-(bmark_len/2), bmark_len, bmark_len)
   end
 
   -- ----------------------      markers      ---------------------------
@@ -338,6 +379,8 @@ function love.draw()
   end
 
   love.graphics.setColor(0, 0, 0, 255)
+  -- ----------------------      some info text      ---------------------------
+  love.graphics.print("animation frame #" .. active_animation, 20, 20)
 end
 
 function createBoneMarkers(x, y, body, anim, parent_angle, root)
@@ -355,9 +398,6 @@ function createBoneMarkers(x, y, body, anim, parent_angle, root)
   local angle = parent_angle + anim.a
   if root then 
     bone_markers_simple = {}
-    print("new root angle")
-    print(parent_angle)
-    print(angle)
   end
   local bone_markers = {}
 
@@ -410,7 +450,7 @@ function drawBones(bone_markers, root)
   end
 end
 
--- snippet from http://snippets.luacode.org/?p=snippets/Simple_Table_Dump_7 , downloaded at 31.12.2012
+-- snippet from http://snippets.luacode.org/?p=snippets/Simple_Table_Dump_7
 function dumpTable(o)
   if type(o) == 'table' then
     local s = '{ '
@@ -422,4 +462,86 @@ function dumpTable(o)
   else
     return tostring(o)
   end
+end
+
+range =
+  function (i, to, inc)
+    if i == nil then return end -- range(--[[ no args ]]) -> return "nothing" to fail the loop in the caller
+    if not to then
+      to = i 
+      i  = to == 0 and 0 or (to > 0 and 1 or -1) 
+    end 
+
+    -- we don't have to do the to == 0 check
+    -- 0 -> 0 with any inc would never iterate
+    inc = inc or (i < to and 1 or -1) 
+
+    -- step back (once) before we start
+    i = i - inc 
+    return function () if i == to then return nil end i = i + inc return i, i end 
+  end 
+
+-- NOTE: pretty the same as dumpTable but more readable
+-- NOTE: it's optimized for my specific tables and manipulate certain values, dont use it for other stuff
+function dumpAnimData(o, recLvl)
+  local recLvl = recLvl or -1
+  recLvl = recLvl + 1
+  local tabs = "" -- TODO: add as many as recursion lvl depth
+  for k, v in range(1, recLvl, 1) do
+    tabs = tabs .. "  "
+  end 
+  if type(o) == 'table' then
+    local s = "\n" .. tabs .. '{\n'
+    for k,v in pairs(o) do
+      local img_ref = "images["
+      if type(k) ~= 'number' then
+        if k == 'i' then
+          k = '"'..k..'"'
+          local found_image = false
+          for pic_k, pic_v in ipairs(images) do
+            if pic_v == v then
+              img_ref = img_ref .. tostring(pic_k) .. "]"
+              found_image = true
+              break
+            end
+          end
+          if found_image then
+            s = s .. tabs .. "  " .. '['..k..'] = ' .. img_ref .. "\n  " .. tabs .. ',\n'
+          else
+            s = s .. tabs .. "  " .. '['..k..'] = defaultimage' .. "\n  " .. tabs .. ',\n'
+          end
+        elseif k == 'image' then
+         s = s
+        else
+          k = '"'..k..'"'
+          s = s .. tabs .. "  " .. '['..k..'] = ' .. dumpAnimData(v, recLvl) .. "\n  " .. tabs .. ',\n'
+        end
+      end
+    end
+    for k,v in ipairs(o) do
+      s = s .. tabs .. "  " .. '['..k..'] = ' .. dumpAnimData(v, recLvl) .. "\n  " ..  tabs .. ',\n'
+    end
+    return s .. tabs .. '} \n'
+  else
+    if type(o) == 'string' then
+      return '"' .. o .. '"'
+    else
+      return tostring(o)
+    end
+  end
+end
+
+-- snippet from http://snippets.luacode.org/snippets/Deep_copy_of_a_Lua_Table_2
+function deepcopy(t)
+    if type(t) ~= 'table' then return t end
+    local mt = getmetatable(t)
+    local res = {}
+    for k,v in pairs(t) do
+        if type(v) == 'table' then
+            v = deepcopy(v)
+        end
+        res[k] = v
+    end
+    setmetatable(res,mt)
+    return res
 end
