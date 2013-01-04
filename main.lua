@@ -1,3 +1,9 @@
+-- Returns the distance between two points.
+function math.dist(x1,y1, x2,y2) return ((x2-x1)^2+(y2-y1)^2)^0.5 end
+
+
+-- Returns the angle between two points.
+function math.angle(x1,y1, x2,y2) return math.atan2(x2-x1, y2-y1) end
 
 function love.load()
   require "TLboner"
@@ -31,6 +37,8 @@ function love.load()
   bone_markers = nil
   bone_markers_simple = nil
 
+  skeleton_position = {love.graphics.getWidth()/2, love.graphics.getHeight()/2}
+
   -- ----------------------- view options -------------------------------
   bmark_len = 8
 
@@ -38,7 +46,9 @@ function love.load()
   anim = { 
     default = { 
 		  r=1, loop=true, advanced=false,
-		  { a=0, {a=math.pi},{a=-math.pi/2},{a=math.pi/2}  },
+		  -- { a=0, {a=math.pi},{a=-math.pi/2},{a=math.pi/2}  },
+		  { a=0, {a=0},{a=0},{a=0}  },
+		--  { a=-0.1, {a=math.pi-0.1},{a=-math.pi/2-0.1},{a=math.pi/2+0.1}  },
     }
   }
 
@@ -55,10 +65,12 @@ function love.load()
     -- TODO: add other basic bones
   }
 
-  bone_markers, bone_markers_simple = createBoneMarkers(love.graphics.getWidth()/2, love.graphics.getHeight()/2, body, anim.default[1], anim.default[1].a, true)
+  bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], anim.default[1].a, true)
   print(dumpTable(bone_markers))
+  --[[
   print("\n\n")
   print(dumpTable(bone_markers_simple))
+  --]]
 end
 
 
@@ -66,26 +78,57 @@ function love.keypressed(k)
 	if k=="escape" then 
     love.event.push("q")
 	elseif k=="t" then 
+    print("toggle animation mode")
     animation_test_mode = not animation_test_mode
-	elseif k=="r" then 
-    if active_marker then 
+  end
+  if active_marker then 
+    animation_test_mode = false
+    if k=="r" then 
       print("enter rotate mode")
       rotate_mode = not rotate_mode
       orig_angle = bone_markers_simple[active_marker]['body']['oa'] or 0
       marker_move_mode_position = { love.mouse.getX(), love.mouse.getY() } -- TODO: rename
-    end
-	elseif k=="s" then 
-    if active_marker then 
+    elseif k=="s" then 
       print("enter resize mode")
       resize_mode = not resize_mode
       orig_scale = {bone_markers_simple[active_marker]['body']['sx'] or 1, bone_markers_simple[active_marker]['body']['sy'] or 1}
       marker_move_mode_position = { love.mouse.getX(), love.mouse.getY() } -- TODO: rename
+    elseif k=="a" then 
+      print("add bone")
+      table.insert(bone_markers_simple[active_marker]['body'], { i=nil, sx=1, sy=1,  ox=0,   oy=0,     l=50,})
+      table.insert(bone_markers_simple[active_marker]['anim'], {a=0})
+      -- recreate bone_markers 
+      -- TODO: minor bug of createBoneMarkers! parent_angle must be set to nil here
+      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], nil, true)
+    elseif k=="m" then 
+      modify_mode = not modify_mode
+      local bottom = bone_markers_simple[active_marker]['bottom'] 
+      if modify_mode == false and new_angle then
+        print("modified bone: set new bone position")
+        bone_markers_simple[active_marker]['body']['l'] = math.dist(bottom[1], bottom[2], love.mouse.getX(), love.mouse.getY())
+        bone_markers_simple[active_marker]['anim']['a'] = new_angle
+        print ( "new angle")
+        print (new_angle)
+        print ( anim.default[1].a )
+        -- recreate bone_markers -- TODO: update subbones's 'bottom' and 'top' and 'angle' attributes (used for drawing)
+        -- TODO: minor 'bug' in createBoneMarkers, for root the parent angle has to be set to 0
+        bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], 0, true)
+        new_angle = nil
+      elseif modify_mode then
+        print("modify bone")
+      end
+      orig_angle = math.angle(bottom[1],bottom[2], love.mouse.getX(), love.mouse.getY() )
+
     end
 	else 
-    animation_test_mode = false
     rotate_mode = false
     resize_mode = false
     orig_angle = nil
+  end
+
+  if k=="b" then 
+      print("recreate bone_markers " )
+      bone_markers, bone_markers_simple = createBoneMarkers(skeleton_position[1], skeleton_position[2], body, anim.default[1], anim.default[1].a, true)
   end
   --[[
 	elseif k=="r" then love.filesystem.load("main.lua")() love.load()
@@ -112,6 +155,7 @@ function love.mousepressed(x, y, button)
           -- attach image to bone
           print("attach image " .. active_image .. " to bone " .. hover_marker )
           bone_markers_simple[hover_marker]['image'] = images[active_image]
+          bone_markers_simple[hover_marker]['body']['image'] = images[active_image]
         else
           -- print("there is a active image, set it to nil!")
           active_image = nil
@@ -183,7 +227,13 @@ function love.update()
       image_locations[active_image] = {mousex, mousey}
     end
 
-    if active_marker and rotate_mode and orig_angle and marker_move_mode_position then
+    if active_marker and modify_mode and orig_angle then
+      local bottom = bone_markers_simple[active_marker]['bottom']
+      local rel_angle = math.angle(bottom[1],bottom[2], love.mouse.getX(), love.mouse.getY() )
+      local diff_angle = (orig_angle - rel_angle)%(2*math.pi)
+      new_angle = (bone_markers_simple[active_marker]['anim']['a'] + diff_angle)%(2*math.pi)
+      -- print ("orig / new angle:" .. bone_markers_simple[active_marker]['anim']['a'] .. " / " .. new_angle ) 
+    elseif active_marker and rotate_mode and orig_angle and marker_move_mode_position then
       loc = { love.mouse.getX(), love.mouse.getY() }
       x = marker_move_mode_position[1] - loc[1]
       new_angle = (orig_angle + (x/100) )%(2*math.pi)
@@ -247,13 +297,17 @@ function love.draw()
       love.graphics.draw(v, loc[1], loc[2])
     end
     for k, v in ipairs(bone_markers_simple) do
-      if v['image'] then
-        -- print("print here: " .. loc[1] .. loc[2])
-        love.graphics.draw(v['image'], v['bottom'][1], v['bottom'][2], v['angle'] + (v['body']['oa'] or 0 ), v['body']['sx'],v['body']['sy'], v['body']['ox'],v['body']['oy'])
+      local image = v['image'] or defaultimage
+      love.graphics.draw(image, v['bottom'][1], v['bottom'][2], v['angle'] + (v['body']['oa'] or 0 ), v['body']['sx'],v['body']['sy'], v['body']['ox'],v['body']['oy'])
+    end
+    if active_marker then
+      if modify_mode then
+        local bottom = bone_markers_simple[active_marker]['bottom']
+        love.graphics.line(bottom[1], bottom[2], love.mouse.getX(), love.mouse.getY())
       end
     end
   else
-    TLboner.draw(body, love.graphics.getWidth()/2 ,love.graphics.getHeight()/2, nil, dt)
+    TLboner.draw(body, skeleton_position[1], skeleton_position[2], nil, dt)
   end
 
   -- ----------------------      bones      ---------------------------
@@ -288,29 +342,44 @@ end
 
 function createBoneMarkers(x, y, body, anim, parent_angle, root)
   root = root or false
-  parent_angle = parent_angle or 0
-  parent_angle = parent_angle + anim.a
+  -- TODO: minor bug of createBoneMarkers! parent_angle must be set to nil here when creating from root
+  -- TODO: following lines do not work properly , don't know why
+  --[[
+  if root then
+    local parent_angle = 0 -- for root parent_angle should be zero, because there is no parent
+  else
+    local parent_angle = parent_angle or 0
+  end
+  --]]
+
+  local angle = parent_angle + anim.a
   if root then 
     bone_markers_simple = {}
+    print("new root angle")
+    print(parent_angle)
+    print(angle)
   end
   local bone_markers = {}
 
   -- body structure: {i=nil, sx=1, sy=1,  ox=0,   oy=0,     l=50, { ...<same here for subbone1>... }, { ...subbone2...}, etc }
   -- anim structure: { a = 0, {...<same here for subbone1>...}, {...etc... } }
-  local new_x, new_y = x + (body.l*math.cos(parent_angle+math.pi*1.5)), y + (body.l*math.sin(parent_angle+math.pi*1.5))
+  local new_x, new_y = x + (body.l*math.cos(angle+math.pi*1.5)), y + (body.l*math.sin(angle+math.pi*1.5))
   bottom = {x,y}
   top = {new_x,new_y}
-  bone_markers.bottom = bottom--love.graphics.setColor(0, 0, 255, 255) -- set special color for root bone
+  bone_markers.bottom = bottom
   bone_markers.top = top
   -- also save references
   bone_markers.body = body
   bone_markers.anim = anim
+  bone_markers.angle = angle
+  bone_markers.parent_angle = parent_angle
+  bone_markers.image = bone_markers.body.image
 
-  table.insert(bone_markers_simple, {bottom = bottom, top = top, body = body, anim = anim, angle = parent_angle})
+  table.insert(bone_markers_simple, {bottom = bottom, top = top, body = body, anim = anim, angle = angle, parent_angle = parent_angle, image = bone_markers.body.image})
   -- print ("recLvl " .. recLvl)
   for k, v in ipairs(body) do
     -- print(k .. " " .. new_x .. " " .. new_y)
-    bone_markers[k] = createBoneMarkers(new_x, new_y, body[k], anim[k], parent_angle, false)
+    bone_markers[k] = createBoneMarkers(new_x, new_y, body[k], anim[k], angle, false)
   end
 
   if root then
@@ -321,6 +390,7 @@ function createBoneMarkers(x, y, body, anim, parent_angle, root)
 end
 
 function drawBones(bone_markers, root)
+  local bone_markers = bone_markers
   root = root or false
 
   if root then 
